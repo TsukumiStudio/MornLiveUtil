@@ -1,0 +1,43 @@
+name: Release mac app
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}" sh make-app.sh
+          .build/apple/Products/Release/MornLiveUtil --selftest
+
+      - name: Sign & notarize via MornNotary
+        env:
+          # classic PAT (repo), matsufriends/MornNotary に書き込めるもの
+          GH_TOKEN: ${{ secrets.MORN_NOTARY_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then echo "::error::MORN_NOTARY_TOKEN が未登録"; exit 1; fi
+          gh auth setup-git
+          gh repo clone matsufriends/MornNotary "$RUNNER_TEMP/MornNotary" -- --depth 1
+          bash "$RUNNER_TEMP/MornNotary/sign.sh" MornLiveUtil.app
+          mv MornLiveUtil-signed.zip MornLiveUtil.app.zip
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" MornLiveUtil.app.zip --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" MornLiveUtil.app.zip --generate-notes
+          fi
