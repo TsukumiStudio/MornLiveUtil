@@ -65,6 +65,7 @@ final class Model {
 struct ContentView: View {
     @State private var model = Model()
     @State private var speakers: [Speaker] = []
+    @StateObject private var updater = Updater()
     @AppStorage("url") private var url = ""
     @AppStorage("speaker") private var speaker = 3
     @AppStorage("speed") private var speed = 1.2
@@ -105,11 +106,44 @@ struct ContentView: View {
                 }
             }
 
-            Text(model.status).font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Text(model.status).font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                updateControls
+                Text("v\(Updater.version)").font(.caption).foregroundStyle(.secondary)
+            }
         }
         .padding()
         .frame(minWidth: 420, minHeight: 480)
         .task { await loadSpeakers() }
+        .task { await updater.check() }
+    }
+
+    @ViewBuilder private var updateControls: some View {
+        switch updater.state {
+        case .idle:
+            Button("最新を確認") { Task { await updater.check() } }
+        case .checking:
+            Text("確認中…").font(.caption)
+        case .available(let tag):
+            Button("最新に更新 (\(tag))") { Task { await updater.update() } }
+        case .upToDate:
+            Button("最新版です ↻") { Task { await updater.check() } }.help("最新を確認")
+        case .updating:
+            Text("更新中…").font(.caption)
+        case .updated:
+            Button("再起動して適用") { updater.restart() }
+        case .failed(let message):
+            Button("更新エラー") {
+                let alert = NSAlert()
+                alert.messageText = "更新できませんでした"
+                alert.informativeText = message
+                alert.alertStyle = .warning
+                alert.runModal()
+            }
+            .foregroundStyle(.red)
+            Button("再確認") { Task { await updater.check() } }
+        }
     }
 
     private func loadSpeakers() async {
@@ -121,12 +155,14 @@ struct ContentView: View {
     }
 }
 
-private func selfTest() {
+@MainActor private func selfTest() {
     precondition(LiveChat.videoID("https://www.youtube.com/watch?v=8GtbuaL0y_8&t=1") == "8GtbuaL0y_8")
     precondition(LiveChat.videoID("https://youtu.be/8GtbuaL0y_8") == "8GtbuaL0y_8")
     precondition(LiveChat.videoID("https://www.youtube.com/live/8GtbuaL0y_8?si=x") == "8GtbuaL0y_8")
     precondition(LiveChat.videoID("8GtbuaL0y_8") == "8GtbuaL0y_8")
     precondition(LiveChat.videoID("hello") == nil)
+    precondition(Updater.isNewer(latestTag: "v0.10.0", current: "0.9.1"))
+    precondition(!Updater.isNewer(latestTag: "v0.1.0", current: "0.1.0"))
 
     let json: [String: Any] = ["continuationContents": ["liveChatContinuation": [
         "continuations": [["invalidationContinuationData": ["continuation": "NEXT", "timeoutMs": 10000]]],

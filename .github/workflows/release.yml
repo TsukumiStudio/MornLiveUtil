@@ -14,6 +14,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check release secrets
+        env:
+          MORN_NOTARY_TOKEN: ${{ secrets.MORN_NOTARY_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          for name in MORN_NOTARY_TOKEN HOMEBREW_TAP_TOKEN; do
+            if [ -z "${!name:-}" ]; then echo "::error::${name} が未登録"; exit 1; fi
+          done
+
       - name: Build
         run: |
           set -euo pipefail
@@ -26,7 +35,6 @@ jobs:
           GH_TOKEN: ${{ secrets.MORN_NOTARY_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "$GH_TOKEN" ]; then echo "::error::MORN_NOTARY_TOKEN が未登録"; exit 1; fi
           gh auth setup-git
           gh repo clone matsufriends/MornNotary "$RUNNER_TEMP/MornNotary" -- --depth 1
           bash "$RUNNER_TEMP/MornNotary/sign.sh" MornLiveUtil.app
@@ -41,3 +49,19 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" MornLiveUtil.app.zip --generate-notes
           fi
+
+      - name: Update Homebrew tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          SHA="$(shasum -a 256 MornLiveUtil.app.zip | awk '{print $1}')"
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/TsukumiStudio/homebrew-tap.git" tap
+          mkdir -p tap/Casks
+          sed -e "s/@VERSION@/${VERSION}/g" -e "s/@SHA256@/${SHA}/g" Support/mornliveutil.rb.in > tap/Casks/mornliveutil.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/mornliveutil.rb
+          git diff --cached --quiet || { git commit -m "mornliveutil ${VERSION}"; git push; }

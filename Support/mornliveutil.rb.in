@@ -1,0 +1,12 @@
+cask "mornliveutil" do
+  version "@VERSION@"
+  sha256 "@SHA256@"
+
+  url "https://github.com/TsukumiStudio/MornLiveUtil/releases/download/v#{version}/MornLiveUtil.app.zip"
+  name "MornLiveUtil"
+  desc "YouTube配信のコメントをVOICEVOXで読み上げるMacアプリ"
+  homepage "https://github.com/TsukumiStudio/MornLiveUtil"
+
+  depends_on macos: :sonoma
+  app "MornLiveUtil.app"
+end
