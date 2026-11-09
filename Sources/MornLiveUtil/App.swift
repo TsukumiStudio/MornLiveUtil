@@ -68,7 +68,6 @@ struct ContentView: View {
     @AppStorage("url") private var url = ""
     @AppStorage("speaker") private var speaker = 3
     @AppStorage("speed") private var speed = 1.2
-    @AppStorage("volume") private var volume = 1.0
     @AppStorage("readName") private var readName = true
 
     var body: some View {
@@ -90,7 +89,6 @@ struct ContentView: View {
                 }
                 .disabled(speakers.isEmpty)
                 Slider(value: $speed, in: 0.5...2.0) { Text("速さ \(speed, specifier: "%.1f")") }
-                Slider(value: $volume, in: 0...1) { Text("音量") }
                 Toggle("名前も読む", isOn: $readName)
             }
 

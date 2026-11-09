@@ -64,7 +64,6 @@ final class Reader {
                         text, speaker: d.integer(forKey: "speaker"), speed: d.object(forKey: "speed") as? Double ?? 1.2)
                     guard let self else { return }
                     let p = try AVAudioPlayer(data: wav)
-                    p.volume = Float(d.object(forKey: "volume") as? Double ?? 1)
                     self.player = p
                     p.play()
                     try await Task.sleep(for: .seconds(p.duration))
