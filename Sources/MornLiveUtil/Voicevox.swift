@@ -37,13 +37,16 @@ enum Voicevox {
 }
 
 /// 読み上げ用に整形する。声はサイトで視聴者が選んだもの (無ければ nil)
-/// maxLength 文字を超えた本文は「以下略」で切る (0 以下なら切らない)
+/// コメント本文が maxLength 文字を超えたら「以下略」で切る (0 以下なら切らない)。
+/// 辞書で長くなった分は数えない
 func speechText(_ chat: Chat, readName: Bool, maxLength: Int = 60, site: SiteConfig = SiteConfig()) -> (text: String, speaker: Int?) {
     let viewer = site.viewers[chat.channelId]
-    var t = site.applyDictionary(chat.text)
+    var t = chat.text
+    var omitted = ""
+    if maxLength > 0, t.count > maxLength { t = String(t.prefix(maxLength)); omitted = " 以下略" }
+    t = site.applyDictionary(t)
         .replacing(/https?:\/\/\S+/, with: "URL")
-        .replacing(/[wｗ]{2,}/, with: "わら")
-    if maxLength > 0, t.count > maxLength { t = String(t.prefix(maxLength)) + " 以下略" }
+        .replacing(/[wｗ]{2,}/, with: "わら") + omitted
     guard readName else { return (t, viewer?.speaker) }
     // "@name-abc" → "name"
     var name = chat.author.replacing(/^@/, with: "").replacing(/-[a-z0-9]{3}$/, with: "")

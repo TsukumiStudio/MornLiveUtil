@@ -103,6 +103,8 @@ struct ContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            SecureField("サイト連携トークン（教育・忘却をサイトに保存）", text: $siteToken)
+                .textFieldStyle(.roundedBorder)
             HStack {
                 TextField("配信URL", text: $url)
                     .textFieldStyle(.roundedBorder)
@@ -115,16 +117,20 @@ struct ContentView: View {
             }
 
             Form {
-                Picker("話者", selection: $speaker) {
-                    ForEach(speakers) { Text($0.name).tag($0.id) }
+                HStack {
+                    Picker("話者", selection: $speaker) {
+                        ForEach(speakers) { Text($0.name).tag($0.id) }
+                    }
+                    Button("試聴") { model.preview() }
                 }
                 .disabled(speakers.isEmpty)
                 Slider(value: $speed, in: 0.5...2.0) { Text("速さ \(speed, specifier: "%.1f")") }
-                Slider(value: $volume, in: 0...1) { Text("音量") }
-                Button("試聴") { model.preview() }.disabled(speakers.isEmpty)
+                Slider(value: $volume, in: 0...1) { Text("音量 \(volume, specifier: "%.1f")") }
                 Toggle("名前も読む", isOn: $readName)
-                TextField("以下略にする文字数（0で無制限）", value: $maxLength, format: .number)
-                SecureField("サイト連携トークン（教育・忘却をサイトに保存）", text: $siteToken)
+                TextField("以下略にする文字数（0で無制限）", text: Binding(
+                    get: { String(maxLength) },
+                    set: { if let n = Int($0.trimmingCharacters(in: .whitespaces)) { maxLength = n } }
+                ))
                 LabeledContent("サイトの辞書・視聴者設定") {
                     Text(siteFetchedAt == 0 ? "未取得" : Date(timeIntervalSince1970: siteFetchedAt).formatted(date: .numeric, time: .shortened))
                         .foregroundStyle(.secondary)
@@ -232,6 +238,8 @@ struct ContentView: View {
         "viewers": ["UCx": ["nickname": "たろう", "speaker": 8]],
     ])
     precondition(site.applyDictionary("ABC と ab") == "エービーシー と エービー")
+    // 辞書で長くなっても、元のコメントが短ければ切らない
+    precondition(speechText(Chat(id: "2", author: "@a", channelId: "", text: "abc"), readName: false, maxLength: 3, site: site).text == "エービーシー")
     let viewer = speechText(Chat(id: "1", author: "@taro", channelId: "UCx", text: "ab"), readName: true, site: site)
     precondition(viewer.text == "たろう、エービー" && viewer.speaker == 8)
     precondition(site.command("教育（xy=えっくす）", token: "") == "xy は えっくす を覚えました！" && site.dictionary["xy"] == "えっくす")
