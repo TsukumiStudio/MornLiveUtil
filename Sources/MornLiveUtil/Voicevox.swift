@@ -37,12 +37,13 @@ enum Voicevox {
 }
 
 /// 読み上げ用に整形する。声はサイトで視聴者が選んだもの (無ければ nil)
-func speechText(_ chat: Chat, readName: Bool, site: SiteConfig = SiteConfig()) -> (text: String, speaker: Int?) {
+/// maxLength 文字を超えた本文は「以下略」で切る (0 以下なら切らない)
+func speechText(_ chat: Chat, readName: Bool, maxLength: Int = 60, site: SiteConfig = SiteConfig()) -> (text: String, speaker: Int?) {
     let viewer = site.viewers[chat.channelId]
     var t = site.applyDictionary(chat.text)
         .replacing(/https?:\/\/\S+/, with: "URL")
         .replacing(/[wｗ]{2,}/, with: "わら")
-    if t.count > 60 { t = String(t.prefix(60)) + " 以下略" }
+    if maxLength > 0, t.count > maxLength { t = String(t.prefix(maxLength)) + " 以下略" }
     guard readName else { return (t, viewer?.speaker) }
     // "@name-abc" → "name"
     var name = chat.author.replacing(/^@/, with: "").replacing(/-[a-z0-9]{3}$/, with: "")

@@ -5,7 +5,7 @@ import SwiftUI
 struct MornLiveUtilApp: App {
     init() {
         // @AppStorage の初期値と読み上げ側の読み出しを揃える
-        UserDefaults.standard.register(defaults: ["speaker": 3, "speed": 1.2, "volume": 1.0, "readName": true])
+        UserDefaults.standard.register(defaults: ["speaker": 3, "speed": 1.2, "volume": 1.0, "readName": true, "maxLength": 60])
         if CommandLine.arguments.contains("--selftest") { selfTest(); exit(0) }
         // swift run で起動してもウィンドウが前面に出るように
         NSApplication.shared.setActivationPolicy(.regular)
@@ -56,7 +56,7 @@ final class Model {
                             if let reply = site.command(c.text, token: d.string(forKey: "siteToken") ?? "") {
                                 reader.say(reply)
                             } else {
-                                let s = speechText(c, readName: d.bool(forKey: "readName"), site: site)
+                                let s = speechText(c, readName: d.bool(forKey: "readName"), maxLength: d.integer(forKey: "maxLength"), site: site)
                                 reader.say(s.text, speaker: s.speaker)
                             }
                         }
@@ -93,6 +93,7 @@ struct ContentView: View {
     @AppStorage("speed") private var speed = 1.2
     @AppStorage("volume") private var volume = 1.0
     @AppStorage("readName") private var readName = true
+    @AppStorage("maxLength") private var maxLength = 60
     @AppStorage("siteToken") private var siteToken = ""
 
     var body: some View {
@@ -117,6 +118,7 @@ struct ContentView: View {
                 Slider(value: $volume, in: 0...1) { Text("音量") }
                 Button("試聴") { model.preview() }.disabled(speakers.isEmpty)
                 Toggle("名前も読む", isOn: $readName)
+                TextField("以下略にする文字数（0で無制限）", value: $maxLength, format: .number)
                 SecureField("サイト連携トークン（教育・忘却をサイトに保存）", text: $siteToken)
             }
 
@@ -189,7 +191,7 @@ struct ContentView: View {
     precondition(LiveChat.videoID("8GtbuaL0y_8") == "8GtbuaL0y_8")
     precondition(LiveChat.videoID("hello") == nil)
     let registered = UserDefaults.standard.volatileDomain(forName: UserDefaults.registrationDomain)
-    precondition(registered["speaker"] as? Int == 3 && registered["readName"] as? Bool == true && registered["volume"] as? Double == 1)
+    precondition(registered["speaker"] as? Int == 3 && registered["readName"] as? Bool == true && registered["volume"] as? Double == 1 && registered["maxLength"] as? Int == 60)
     precondition(Updater.isNewer(latestTag: "v0.10.0", current: "0.9.1"))
     precondition(!Updater.isNewer(latestTag: "v0.1.0", current: "0.1.0"))
 
@@ -209,6 +211,10 @@ struct ContentView: View {
     precondition(chats.map(\.id) == ["a", "b"])
     precondition(speechText(chats[0], readName: true).text == "taro、見て URL わら")
     precondition(speechText(chats[1], readName: false).text == "¥500 ")
+    let long = Chat(id: "l", author: "@a", channelId: "", text: String(repeating: "あ", count: 80))
+    precondition(speechText(long, readName: false).text == String(repeating: "あ", count: 60) + " 以下略")
+    precondition(speechText(long, readName: false, maxLength: 10).text == String(repeating: "あ", count: 10) + " 以下略")
+    precondition(speechText(long, readName: false, maxLength: 0).text == long.text)
 
     var site = SiteConfig.parse([
         "dictionary": ["ab": "エービー", "abc": "エービーシー"],
