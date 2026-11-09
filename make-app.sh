@@ -2,12 +2,11 @@
 # MornLiveUtil.app を作る (VERSION=1.2.3 で版を指定)
 set -e
 cd "$(dirname "$0")"
-ARCH="--arch arm64 --arch x86_64"
-swift build -c release $ARCH
+swift build -c release
 APP=MornLiveUtil.app
 rm -rf "$APP" && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp Support/AppIcon.icns "$APP/Contents/Resources/"
-cp "$(swift build -c release $ARCH --show-bin-path)/MornLiveUtil" "$APP/Contents/MacOS/"
+cp "$(swift build -c release --show-bin-path)/MornLiveUtil" "$APP/Contents/MacOS/"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict>

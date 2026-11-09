@@ -8,5 +8,6 @@ cask "mornliveutil" do
   homepage "https://github.com/TsukumiStudio/MornLiveUtil"
 
   depends_on macos: :sonoma
+  depends_on arch: :arm64
   app "MornLiveUtil.app"
 end

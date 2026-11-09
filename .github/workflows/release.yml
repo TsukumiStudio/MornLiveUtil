@@ -27,7 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}" sh make-app.sh
-          .build/apple/Products/Release/MornLiveUtil --selftest
+          .build/release/MornLiveUtil --selftest
 
       - name: Sign & notarize via MornNotary
         env:
