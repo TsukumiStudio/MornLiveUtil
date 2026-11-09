@@ -55,6 +55,7 @@ func speechText(_ chat: Chat, readName: Bool, maxLength: Int = 60, site: SiteCon
 }
 
 /// 1 本ずつ順番に再生する。溜まりすぎたら古いものから捨てる。
+/// 再生中に次のコメントを合成しておき、合成待ちを再生の間に挟まない。
 final class Reader {
     private let queue: AsyncStream<(String, Int?)>.Continuation
     private var player: AVAudioPlayer?
@@ -63,24 +64,40 @@ final class Reader {
         let (stream, queue) = AsyncStream.makeStream(of: (String, Int?).self, bufferingPolicy: .bufferingNewest(10))
         self.queue = queue
         Task { [weak self] in
-            for await (text, speaker) in stream {
+            var items = stream.makeAsyncIterator()
+            guard let first = await items.next() else { return }
+            var wav = Self.synthesize(first)
+            while true {
+                var end = ContinuousClock.now
                 do {
                     guard let self else { return }
-                    try await Task.sleep(for: .seconds(self.play(text, speaker: speaker)))
+                    end += .seconds(try self.play(wav: await wav.value))
                 } catch {
                     await onError("VOICEVOX: \(error.localizedDescription)")
                 }
+                guard let next = await items.next() else { return }
+                wav = Self.synthesize(next)
+                try? await Task.sleep(until: end)
             }
         }
+    }
+
+    private static func synthesize(_ item: (text: String, speaker: Int?)) -> Task<Data, Error> {
+        let d = UserDefaults.standard
+        let speaker = item.speaker ?? d.integer(forKey: "speaker")
+        let speed = d.double(forKey: "speed")
+        return Task { try await Voicevox.synthesize(item.text, speaker: speaker, speed: speed) }
     }
 
     /// 再生を始めて長さ(秒)を返す
     @discardableResult
     func play(_ text: String, speaker: Int? = nil) async throws -> TimeInterval {
-        let d = UserDefaults.standard
-        let wav = try await Voicevox.synthesize(text, speaker: speaker ?? d.integer(forKey: "speaker"), speed: d.double(forKey: "speed"))
+        try play(wav: await Self.synthesize((text, speaker)).value)
+    }
+
+    private func play(wav: Data) throws -> TimeInterval {
         let p = try AVAudioPlayer(data: wav)
-        p.volume = Float(d.double(forKey: "volume"))
+        p.volume = Float(UserDefaults.standard.double(forKey: "volume"))
         player?.stop()
         player = p
         p.play()
