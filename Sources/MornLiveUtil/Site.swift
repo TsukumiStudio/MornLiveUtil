@@ -12,9 +12,31 @@ struct SiteConfig {
 
     static let base = "https://live.tsukumistudio.com"
 
+    /// 取得してローカルに保存する。読み上げ時は通信せず保存分を使う
     static func fetch() async throws -> SiteConfig {
         let (data, _) = try await URLSession.shared.data(from: URL(string: "\(base)/api/app/config")!)
-        return parse(try JSONSerialization.jsonObject(with: data))
+        let config = parse(try JSONSerialization.jsonObject(with: data))
+        config.save()
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "siteFetchedAt")
+        return config
+    }
+
+    static func cached() -> SiteConfig {
+        guard let data = UserDefaults.standard.data(forKey: "siteConfig"),
+              let json = try? JSONSerialization.jsonObject(with: data) else { return SiteConfig() }
+        return parse(json)
+    }
+
+    func save() {
+        UserDefaults.standard.set(try? JSONSerialization.data(withJSONObject: json), forKey: "siteConfig")
+    }
+
+    var json: [String: Any] {
+        ["dictionary": dictionary, "viewers": viewers.mapValues { v -> [String: Any] in
+            var o: [String: Any] = ["nickname": v.nickname]
+            if let s = v.speaker { o["speaker"] = s }
+            return o
+        }]
     }
 
     static func parse(_ json: Any) -> SiteConfig {
@@ -60,7 +82,7 @@ struct SiteConfig {
         req.httpMethod = "POST"
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        // ponytail: 失敗しても再送しない。次の取得でサイトの内容に戻る
+        // ponytail: 失敗しても再送しない。次の再取得でサイトの内容に戻る
         Task { _ = try? await URLSession.shared.data(for: req) }
     }
 }

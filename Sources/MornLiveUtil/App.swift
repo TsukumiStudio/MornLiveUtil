@@ -22,7 +22,7 @@ struct MornLiveUtilApp: App {
 final class Model {
     var chats: [Chat] = []
     var status = ""
-    @ObservationIgnored private var site = SiteConfig()
+    @ObservationIgnored private var site = SiteConfig.cached()
     var running = false
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored lazy var reader = Reader { [weak self] in self?.status = $0 }
@@ -37,15 +37,9 @@ final class Model {
             defer { running = false }
             do {
                 var chat = try await LiveChat.connect(videoID: id)
-                var siteFetched = Date.distantPast
                 status = "接続しました"
                 var first = true
                 while !Task.isCancelled {
-                    // サイトの辞書・視聴者設定は 1 分ごとに取り直す
-                    if Date().timeIntervalSince(siteFetched) > 60 {
-                        siteFetched = Date()
-                        do { site = try await SiteConfig.fetch() } catch { status = "サイトの設定を読めません: \(error.localizedDescription)" }
-                    }
                     let (new, wait) = try await chat.poll()
                     chats.append(contentsOf: new)
                     if chats.count > 500 { chats.removeFirst(chats.count - 500) }
@@ -54,6 +48,7 @@ final class Model {
                         let d = UserDefaults.standard
                         for c in new {
                             if let reply = site.command(c.text, token: d.string(forKey: "siteToken") ?? "") {
+                                site.save()
                                 reader.say(reply)
                             } else {
                                 let s = speechText(c, readName: d.bool(forKey: "readName"), maxLength: d.integer(forKey: "maxLength"), site: site)
@@ -69,6 +64,15 @@ final class Model {
             } catch {
                 status = error.localizedDescription
             }
+        }
+    }
+
+    func refreshSite() async {
+        do {
+            site = try await SiteConfig.fetch()
+            status = "サイトの設定を取得しました"
+        } catch {
+            status = "サイトの設定を読めません（前回の保存分で読み上げます）: \(error.localizedDescription)"
         }
     }
 
@@ -95,6 +99,7 @@ struct ContentView: View {
     @AppStorage("readName") private var readName = true
     @AppStorage("maxLength") private var maxLength = 60
     @AppStorage("siteToken") private var siteToken = ""
+    @AppStorage("siteFetchedAt") private var siteFetchedAt = 0.0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -120,6 +125,11 @@ struct ContentView: View {
                 Toggle("名前も読む", isOn: $readName)
                 TextField("以下略にする文字数（0で無制限）", value: $maxLength, format: .number)
                 SecureField("サイト連携トークン（教育・忘却をサイトに保存）", text: $siteToken)
+                LabeledContent("サイトの辞書・視聴者設定") {
+                    Text(siteFetchedAt == 0 ? "未取得" : Date(timeIntervalSince1970: siteFetchedAt).formatted(date: .numeric, time: .shortened))
+                        .foregroundStyle(.secondary)
+                    Button("サイトから再取得") { Task { await model.refreshSite() } }
+                }
             }
 
             ScrollViewReader { proxy in
@@ -145,6 +155,7 @@ struct ContentView: View {
         .padding()
         .frame(minWidth: 420, minHeight: 480)
         .task { await loadSpeakers() }
+        .task { await model.refreshSite() }
         .task { await updater.check() }
     }
 
@@ -227,6 +238,8 @@ struct ContentView: View {
     precondition(site.command("忘却(xy)", token: "") == "xy を忘れました！" && site.dictionary["xy"] == nil)
     precondition(site.command("忘却（xy）", token: "") == "xy は覚えていません！")
     precondition(site.command("前に教育（a=b）", token: "") == nil)
+    let restored = SiteConfig.parse(site.json)
+    precondition(restored.dictionary == site.dictionary && restored.viewers["UCx"]?.nickname == "たろう" && restored.viewers["UCx"]?.speaker == 8)
     precondition(LiveChat.parse([:]).continuation == nil)
     print("selftest ok")
 }
