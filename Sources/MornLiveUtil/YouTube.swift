@@ -3,6 +3,7 @@ import Foundation
 struct Chat: Identifiable {
     let id: String
     let author: String
+    var channelId = ""
     let text: String
 }
 
@@ -91,7 +92,7 @@ struct LiveChat {
             if let amount = (paid?["purchaseAmountText"] as? [String: Any])?["simpleText"] as? String {
                 text = "\(amount) \(text)"
             }
-            return Chat(id: id, author: author, text: text)
+            return Chat(id: id, author: author, channelId: r["authorExternalChannelId"] as? String ?? "", text: text)
         }
         return (chats, token, wait)
     }

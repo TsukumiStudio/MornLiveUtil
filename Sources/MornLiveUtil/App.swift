@@ -22,6 +22,7 @@ struct MornLiveUtilApp: App {
 final class Model {
     var chats: [Chat] = []
     var status = ""
+    @ObservationIgnored private var site = SiteConfig()
     var running = false
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored lazy var reader = Reader { [weak self] in self?.status = $0 }
@@ -36,16 +37,29 @@ final class Model {
             defer { running = false }
             do {
                 var chat = try await LiveChat.connect(videoID: id)
+                var siteFetched = Date.distantPast
                 status = "接続しました"
                 var first = true
                 while !Task.isCancelled {
+                    // サイトの辞書・視聴者設定は 1 分ごとに取り直す
+                    if Date().timeIntervalSince(siteFetched) > 60 {
+                        siteFetched = Date()
+                        do { site = try await SiteConfig.fetch() } catch { status = "サイトの設定を読めません: \(error.localizedDescription)" }
+                    }
                     let (new, wait) = try await chat.poll()
                     chats.append(contentsOf: new)
                     if chats.count > 500 { chats.removeFirst(chats.count - 500) }
                     // 接続直後に届く過去ログは読まない
                     if !first {
-                        let readName = UserDefaults.standard.bool(forKey: "readName")
-                        new.forEach { reader.say(speechText($0, readName: readName)) }
+                        let d = UserDefaults.standard
+                        for c in new {
+                            if let reply = site.command(c.text, token: d.string(forKey: "siteToken") ?? "") {
+                                reader.say(reply)
+                            } else {
+                                let s = speechText(c, readName: d.bool(forKey: "readName"), site: site)
+                                reader.say(s.text, speaker: s.speaker)
+                            }
+                        }
                     }
                     first = false
                     try await Task.sleep(for: .milliseconds(wait))
@@ -79,6 +93,7 @@ struct ContentView: View {
     @AppStorage("speed") private var speed = 1.2
     @AppStorage("volume") private var volume = 1.0
     @AppStorage("readName") private var readName = true
+    @AppStorage("siteToken") private var siteToken = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -102,6 +117,7 @@ struct ContentView: View {
                 Slider(value: $volume, in: 0...1) { Text("音量") }
                 Button("試聴") { model.preview() }.disabled(speakers.isEmpty)
                 Toggle("名前も読む", isOn: $readName)
+                SecureField("サイト連携トークン（教育・忘却をサイトに保存）", text: $siteToken)
             }
 
             ScrollViewReader { proxy in
@@ -191,8 +207,20 @@ struct ContentView: View {
     let (chats, next, wait) = LiveChat.parse(json)
     precondition(next == "NEXT" && wait == 2000)
     precondition(chats.map(\.id) == ["a", "b"])
-    precondition(speechText(chats[0], readName: true) == "taro、見て URL わら")
-    precondition(speechText(chats[1], readName: false) == "¥500 ")
+    precondition(speechText(chats[0], readName: true).text == "taro、見て URL わら")
+    precondition(speechText(chats[1], readName: false).text == "¥500 ")
+
+    var site = SiteConfig.parse([
+        "dictionary": ["ab": "エービー", "abc": "エービーシー"],
+        "viewers": ["UCx": ["nickname": "たろう", "speaker": 8]],
+    ])
+    precondition(site.applyDictionary("ABC と ab") == "エービーシー と エービー")
+    let viewer = speechText(Chat(id: "1", author: "@taro", channelId: "UCx", text: "ab"), readName: true, site: site)
+    precondition(viewer.text == "たろう、エービー" && viewer.speaker == 8)
+    precondition(site.command("教育（xy=えっくす）", token: "") == "xy は えっくす を覚えました！" && site.dictionary["xy"] == "えっくす")
+    precondition(site.command("忘却(xy)", token: "") == "xy を忘れました！" && site.dictionary["xy"] == nil)
+    precondition(site.command("忘却（xy）", token: "") == "xy は覚えていません！")
+    precondition(site.command("前に教育（a=b）", token: "") == nil)
     precondition(LiveChat.parse([:]).continuation == nil)
     print("selftest ok")
 }
