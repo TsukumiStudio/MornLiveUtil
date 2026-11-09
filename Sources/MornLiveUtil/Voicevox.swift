@@ -58,20 +58,26 @@ final class Reader {
         self.queue = queue
         Task { [weak self] in
             for await text in stream {
-                let d = UserDefaults.standard
                 do {
-                    let wav = try await Voicevox.synthesize(
-                        text, speaker: d.integer(forKey: "speaker"), speed: d.object(forKey: "speed") as? Double ?? 1.2)
                     guard let self else { return }
-                    let p = try AVAudioPlayer(data: wav)
-                    self.player = p
-                    p.play()
-                    try await Task.sleep(for: .seconds(p.duration))
+                    try await Task.sleep(for: .seconds(self.play(text)))
                 } catch {
                     await onError("VOICEVOX: \(error.localizedDescription)")
                 }
             }
         }
+    }
+
+    /// 再生を始めて長さ(秒)を返す
+    @discardableResult
+    func play(_ text: String) async throws -> TimeInterval {
+        let d = UserDefaults.standard
+        let wav = try await Voicevox.synthesize(text, speaker: d.integer(forKey: "speaker"), speed: d.double(forKey: "speed"))
+        let p = try AVAudioPlayer(data: wav)
+        player?.stop()
+        player = p
+        p.play()
+        return p.duration
     }
 
     func say(_ text: String) { if !text.isEmpty { queue.yield(text) } }

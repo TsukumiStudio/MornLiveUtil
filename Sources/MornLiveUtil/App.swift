@@ -4,6 +4,8 @@ import SwiftUI
 @main
 struct MornLiveUtilApp: App {
     init() {
+        // @AppStorage の初期値と読み上げ側の読み出しを揃える
+        UserDefaults.standard.register(defaults: ["speaker": 3, "speed": 1.2, "readName": true])
         if CommandLine.arguments.contains("--selftest") { selfTest(); exit(0) }
         // swift run で起動してもウィンドウが前面に出るように
         NSApplication.shared.setActivationPolicy(.regular)
@@ -56,6 +58,12 @@ final class Model {
         }
     }
 
+    func preview() {
+        Task {
+            do { try await reader.play("これはテストです") } catch { status = "VOICEVOX: \(error.localizedDescription)" }
+        }
+    }
+
     func stop() {
         task?.cancel()
         reader.stop()
@@ -90,6 +98,7 @@ struct ContentView: View {
                 }
                 .disabled(speakers.isEmpty)
                 Slider(value: $speed, in: 0.5...2.0) { Text("速さ \(speed, specifier: "%.1f")") }
+                Button("試聴") { model.preview() }.disabled(speakers.isEmpty)
                 Toggle("名前も読む", isOn: $readName)
             }
 
@@ -161,6 +170,8 @@ struct ContentView: View {
     precondition(LiveChat.videoID("https://www.youtube.com/live/8GtbuaL0y_8?si=x") == "8GtbuaL0y_8")
     precondition(LiveChat.videoID("8GtbuaL0y_8") == "8GtbuaL0y_8")
     precondition(LiveChat.videoID("hello") == nil)
+    let registered = UserDefaults.standard.volatileDomain(forName: UserDefaults.registrationDomain)
+    precondition(registered["speaker"] as? Int == 3 && registered["readName"] as? Bool == true)
     precondition(Updater.isNewer(latestTag: "v0.10.0", current: "0.9.1"))
     precondition(!Updater.isNewer(latestTag: "v0.1.0", current: "0.1.0"))
 
