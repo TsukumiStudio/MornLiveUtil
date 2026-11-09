@@ -74,6 +74,7 @@ final class Reader {
         let d = UserDefaults.standard
         let wav = try await Voicevox.synthesize(text, speaker: d.integer(forKey: "speaker"), speed: d.double(forKey: "speed"))
         let p = try AVAudioPlayer(data: wav)
+        p.volume = Float(d.double(forKey: "volume"))
         player?.stop()
         player = p
         p.play()
