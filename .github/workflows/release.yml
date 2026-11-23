@@ -37,17 +37,22 @@ jobs:
           set -euo pipefail
           gh auth setup-git
           gh repo clone matsufriends/MornNotary "$RUNNER_TEMP/MornNotary" -- --depth 1
+          # 中の app を先に署名・公証・staple してから dmg に詰め、dmg も署名・公証する
           bash "$RUNNER_TEMP/MornNotary/sign.sh" MornLiveUtil.app
-          mv MornLiveUtil-signed.zip MornLiveUtil.app.zip
+          rm -rf MornLiveUtil.app && ditto -x -k MornLiveUtil-signed.zip . && rm MornLiveUtil-signed.zip
+          sh make-dmg.sh
+          bash "$RUNNER_TEMP/MornNotary/sign.sh" MornLiveUtil.dmg
+          rm MornLiveUtil.dmg && ditto -x -k MornLiveUtil-signed.zip .
+          spctl -a -t open --context context:primary-signature -v MornLiveUtil.dmg
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" MornLiveUtil.app.zip --clobber
+            gh release upload "$GITHUB_REF_NAME" MornLiveUtil.dmg --clobber
           else
-            gh release create "$GITHUB_REF_NAME" MornLiveUtil.app.zip --generate-notes
+            gh release create "$GITHUB_REF_NAME" MornLiveUtil.dmg --generate-notes
           fi
 
       - name: Update Homebrew tap
@@ -56,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
-          SHA="$(shasum -a 256 MornLiveUtil.app.zip | awk '{print $1}')"
+          SHA="$(shasum -a 256 MornLiveUtil.dmg | awk '{print $1}')"
           git clone "https://x-access-token:${GH_TOKEN}@github.com/TsukumiStudio/homebrew-tap.git" tap
           mkdir -p tap/Casks
           sed -e "s/@VERSION@/${VERSION}/g" -e "s/@SHA256@/${SHA}/g" Support/mornliveutil.rb.in > tap/Casks/mornliveutil.rb
