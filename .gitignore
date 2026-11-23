@@ -1,2 +1,4 @@
 .build/
 *.app
+*.dmg
+*-signed.zip
