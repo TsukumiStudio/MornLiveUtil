@@ -24,6 +24,7 @@ final class Model {
     var status = ""
     @ObservationIgnored private var site = SiteConfig.cached()
     var running = false
+    var viewers: Int?
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored lazy var reader = Reader { [weak self] in self?.status = $0 }
 
@@ -38,6 +39,15 @@ final class Model {
             do {
                 var chat = try await LiveChat.connect(videoID: id)
                 status = "接続しました"
+                // 非公式 API なのでクォータは無いが、YouTube 画面の更新と同程度の 30 秒おきに留める
+                let meta = chat
+                let viewerTask = Task {
+                    while !Task.isCancelled {
+                        viewers = await meta.viewers(videoID: id)
+                        try? await Task.sleep(for: .seconds(30))
+                    }
+                }
+                defer { viewerTask.cancel(); viewers = nil }
                 var first = true
                 while !Task.isCancelled {
                     let (new, wait) = try await chat.poll()
@@ -154,6 +164,7 @@ struct ContentView: View {
             HStack {
                 Text(model.status).font(.caption).foregroundStyle(.secondary)
                 Spacer()
+                Text("視聴中 \(model.viewers.map { "\($0)人" } ?? "―")").font(.caption).monospacedDigit()
                 updateControls
                 Text("v\(Updater.version)").font(.caption).foregroundStyle(.secondary)
             }
@@ -249,5 +260,9 @@ struct ContentView: View {
     let restored = SiteConfig.parse(site.json)
     precondition(restored.dictionary == site.dictionary && restored.viewers["UCx"]?.nickname == "たろう" && restored.viewers["UCx"]?.speaker == 8)
     precondition(LiveChat.parse([:]).continuation == nil)
+    func viewership(_ r: [String: Any]) -> [String: Any] { ["actions": [["updateViewershipAction": ["viewCount": ["videoViewCountRenderer": r]]]]] }
+    precondition(LiveChat.parseViewers(viewership(["isLive": true, "originalViewCount": "1234"])) == 1234)
+    precondition(LiveChat.parseViewers(viewership(["originalViewCount": "651847123"])) == nil)
+    precondition(LiveChat.parseViewers([:]) == nil)
     print("selftest ok")
 }

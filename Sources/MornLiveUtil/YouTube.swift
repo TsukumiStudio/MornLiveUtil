@@ -70,6 +70,32 @@ struct LiveChat {
         return (chats, wait)
     }
 
+    /// 同時視聴者数。配信中でない・取れないときは nil。チャットと同じ youtubei の updated_metadata を叩く
+    func viewers(videoID: String) async -> Int? {
+        var req = URLRequest(url: URL(string: "https://www.youtube.com/youtubei/v1/updated_metadata?key=\(apiKey)")!)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "context": ["client": ["clientName": "WEB", "clientVersion": clientVersion, "hl": "ja"]],
+            "videoId": videoID,
+        ])
+        guard let data = try? await URLSession.shared.data(for: req).0,
+              let json = try? JSONSerialization.jsonObject(with: data) else { return nil }
+        return Self.parseViewers(json)
+    }
+
+    static func parseViewers(_ json: Any) -> Int? {
+        let actions = (json as? [String: Any])?["actions"] as? [[String: Any]] ?? []
+        for a in actions {
+            guard let r = ((a["updateViewershipAction"] as? [String: Any])?["viewCount"] as? [String: Any])?["videoViewCountRenderer"] as? [String: Any] else { continue }
+            // アーカイブや待機所は総再生回数が入るので、isLive のときだけ同接とみなす
+            guard r["isLive"] as? Bool == true else { return nil }
+            return (r["originalViewCount"] as? String).flatMap { Int($0) }
+        }
+        return nil
+    }
+
     static func parse(_ json: Any) -> (chats: [Chat], continuation: String?, waitMs: Int) {
         let root = (json as? [String: Any])?["continuationContents"] as? [String: Any]
         let live = root?["liveChatContinuation"] as? [String: Any] ?? [:]
